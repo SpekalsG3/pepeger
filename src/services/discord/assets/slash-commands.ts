@@ -1,5 +1,6 @@
 export enum ECommands {
-  status = 'status'
+  status = 'status',
+  ban = 'ban'
 }
 
 export interface ISlashCommand {

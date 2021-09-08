@@ -1,7 +1,17 @@
 export enum EEmotes {
   aRolf = 'aRolf',
-  pepeGhoul = 'PepeGhoul',
+  PepeGhoul = 'PepeGhoul',
   pepeSmoke = 'pepeSmoke',
   pepeChill = 'pepeChill',
-  peepoChill = 'PeepoChill',
+  PeepoChill = 'PeepoChill',
+  KEKW = 'KEKW'
 }
+
+export const EmotesPriority: EEmotes[] = [
+  EEmotes.PepeGhoul,
+  EEmotes.pepeChill,
+  EEmotes.PeepoChill,
+  EEmotes.pepeSmoke,
+  EEmotes.KEKW,
+  EEmotes.aRolf,
+]

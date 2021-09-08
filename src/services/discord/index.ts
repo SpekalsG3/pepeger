@@ -1,26 +1,13 @@
-import { Client, Intents, Interaction, Message } from 'discord.js'
-
-import { REST } from '@discordjs/rest'
-import { Routes } from 'discord-api-types/v9'
+import { Client, Message } from 'discord.js'
 
 import { Logger } from '../../libs/logger'
 
-import { EDiscordStatuses, IDiscordConfig, TFoundEmotes } from './types'
-import { SlashCommands, ECommands, ISlashCommand } from './assets/slash-commands'
-import { EEmotes } from './assets/emotes'
-
-interface IRestCommand {
-  id: string
-  application_id: string
-  name: string
-  description: string
-  version: string
-  default_permission: boolean
-  type: number
-}
+import { EDiscordStatuses, IDiscordConfig } from './types'
+import { ECommands } from './assets/slash-commands'
+import { EEmotes, EmotesPriority } from './assets/emotes'
 
 export class Discord {
-  private readonly foundEmotes: TFoundEmotes = new Map<EEmotes, { [guildId: string]: string }>()
+  private readonly foundEmotes = new Map<string, { [emojiName: string]: string }>()
   private readonly client: Client
   private readonly logger: Logger
   private readonly config: IDiscordConfig
@@ -28,64 +15,81 @@ export class Discord {
   private timeoutExceedTimes = 0
 
   constructor (config: IDiscordConfig) {
-    this.client = new Client({
-      intents: [
-        Intents.FLAGS.GUILDS,
-        Intents.FLAGS.GUILD_MESSAGES,
-      ],
-    })
+    this.client = new Client()
     this.logger = new Logger('DISCORD-CLIENT')
     this.initListeners()
     this.config = config
   }
 
-  private getReplyForCommand (command: ECommands, guildId: string): string {
+  private updateInteractionTimeout (date: Date): void {
+    this.interactionTimeout = new Date(date.getTime() + 1000 * 5)
+  }
+
+  private getReplyForStatus (guildId: string, message: Message): string {
     if (this.interactionTimeout.getTime() > Date.now()) {
       if (this.timeoutExceedTimes === 1) {
         this.timeoutExceedTimes += 1
+        this.updateInteractionTimeout(this.interactionTimeout)
         return 'По медленней, еще раз и иди нахуй :/'
       } else if (this.timeoutExceedTimes === 2) {
         this.timeoutExceedTimes += 1
-        return 'Лан, пошли нахуй :/'
+        this.updateInteractionTimeout(this.interactionTimeout)
+        return 'Лан, пошли нахуй'
       }
       return null
     }
 
-    this.timeoutExceedTimes = 0
-    if (command === ECommands.status) {
-      this.timeoutExceedTimes += 1
-      this.interactionTimeout = new Date(Date.now() + 1000 * 60 * 5)
-      let type = null
-      if (this.foundEmotes.get(EEmotes.pepeGhoul)?.[guildId]) {
-        type = EEmotes.pepeGhoul
-      } else if (this.foundEmotes.get(EEmotes.peepoChill)?.[guildId]) {
-        type = EEmotes.peepoChill
-      }
-      const emojiOnGuild = this.foundEmotes.get(type)?.[guildId]
-      return `Да живой я, отъебись${emojiOnGuild ? ` <:${type}:${emojiOnGuild}>` : ''}`
-    }
+    this.timeoutExceedTimes = 1
+    this.updateInteractionTimeout(new Date())
 
+    let id = null
+    const guildEmojies = this.foundEmotes.get(guildId)
+    for (const emote of EmotesPriority) {
+      const emoteId = guildEmojies[emote]
+      if (emoteId) {
+        id = emoteId
+      }
+    }
+    const emoji = message.guild.emojis.cache.get(id)
+    return `Да живой я, отъебись ${emoji}`
+  }
+
+  private getReplyForBan (message: Message): string {
+    const mentioned = [...message.mentions.users.values()]
+    if (!mentioned[1] && mentioned[0]?.equals(this.client.user)) {
+      const guildEmojis = this.foundEmotes.get(message.guild.id)
+      if (guildEmojis[EEmotes.PepeGhoul]) {
+        return `${message.author} себя забань животное ${message.guild.emojis.cache.get(guildEmojis[EEmotes.PepeGhoul])}`
+      } else if (guildEmojis[EEmotes.PeepoChill]) {
+        return `Отъебись ${message.guild.emojis.cache.get(guildEmojis[EEmotes.PeepoChill])}`
+      }
+    }
     return null
   }
 
+  private getReplyForCommand (command: ECommands, message: Message): string {
+    switch (command) {
+      case ECommands.status: return this.getReplyForStatus(message.guild.id, message)
+      case ECommands.ban: return this.getReplyForBan(message)
+      default: return null
+    }
+  }
+
   private initListeners (): void {
-    this.client.on('ready', async (): Promise<void> => {
+    this.client.on('ready', (): void => {
       this.logger.info(`Logged in as: ${this.client.user.tag}`)
 
+      const emojiNames = Object.values(EEmotes)
       const emojis = this.client.emojis.cache
       for (const [emojiId, emoji] of emojis) {
-        const emojiName = <EEmotes>emoji.name
-        const newEmojiData = {
-          [emoji.guild.id]: emojiId,
+        let guildEmojies = this.foundEmotes.get(emoji.guild.id)
+        if (!guildEmojies) {
+          guildEmojies = {}
         }
-        const savedEmojisData = this.foundEmotes.get(emojiName)
-        if (savedEmojisData) {
-          if (!savedEmojisData[emoji.guild.id]) {
-            this.foundEmotes.set(emojiName, Object.assign(savedEmojisData, newEmojiData))
-          }
-        } else {
-          this.foundEmotes.set(emojiName, newEmojiData)
+        if (emojiNames.includes(<EEmotes>emoji.name)) {
+          Object.assign(guildEmojies, { [emoji.name]: emojiId })
         }
+        this.foundEmotes.set(emoji.guild.id, guildEmojies)
       }
     })
 
@@ -93,29 +97,16 @@ export class Discord {
       this.logger.error('Error: ', error.message)
     })
 
-    this.client.on('messageCreate', async (message: Message): Promise<void> => {
-      // const emojiOnGuild = this.foundEmotes.get(EEmotes.peepoChill)?.[message.guildId]
-      //
-      // if (emojiOnGuild) {
-      //   await message.react(emojiOnGuild)
-      // }
-      if (message.content.match(/^!\w*$/g)) {
-        const command = message.content.slice(1)
-        const reply = this.getReplyForCommand(<ECommands>command, message.guildId)
-        if (reply) {
-          await message.reply(reply)
-        }
-      }
-    })
+    this.client.on('message', async (message: Message): Promise<void> => {
+      // await message.react(this.foundEmotes.get(message.guild.id)[EEmotes.PeepoChill])
+      if (message.author.bot) return
 
-    this.client.on('interactionCreate', async (interaction: Interaction): Promise<void> => {
-      if (!interaction.isCommand()) return
-      const reply = this.getReplyForCommand(<ECommands>interaction.commandName, interaction.guildId)
-      if (reply) {
-        await interaction.reply({
-          content: reply,
-          ephemeral: true,
-        })
+      if (message.content[0] === '!') {
+        const command = <ECommands>(/!*(\w*).*/g).exec(message.content)[1]
+        const reply = this.getReplyForCommand(command, message)
+        if (reply) {
+          await message.channel.send(reply)
+        }
       }
     })
   }
@@ -125,29 +116,6 @@ export class Discord {
   }
 
   public async login (): Promise<void> {
-    const rest = new REST({ version: '9' }).setToken(this.config.token)
-    const registeredCommands: IRestCommand[] = <any> await rest.get(
-      Routes.applicationCommands(this.config.applicationId),
-    )
-
-    const commandsToRegister: ISlashCommand[] = []
-    for (const registeredCommand of registeredCommands) {
-      const foundCommand = SlashCommands.find(c => c.name === registeredCommand.name)
-      if (foundCommand) {
-        if (foundCommand.description !== registeredCommand.description) {
-          commandsToRegister.push(foundCommand)
-        }
-      } else {
-        commandsToRegister.push(foundCommand)
-      }
-    }
-    if (commandsToRegister.length > 0) {
-      await rest.put(
-        Routes.applicationCommands(this.config.applicationId), {
-          body: commandsToRegister,
-        },
-      )
-    }
     await this.client.login(this.config.token)
   }
 }
