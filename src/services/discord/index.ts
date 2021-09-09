@@ -100,15 +100,22 @@ export class Discord {
     const mentions = [...message.mentions.users.values()]
     if (mentions.length === 1 && mentions[0].equals(this.client.user)) {
       let text = null
-      const textBeforePing = /^([a-zA-Zа-яА-Я ]*) <.*?>$/g.exec(message.content)
-      if (typeof textBeforePing?.[1] === 'string') {
-        text = textBeforePing[1]
-      } else {
-        const textAfterPing = /^<.*?> ([a-zA-Zа-яА-Я ]*)$/g.exec(message.content)
-        if (typeof textAfterPing?.[1] === 'string') {
-          text = textAfterPing[1]
+      for (const line of message.content.split('\n')) {
+        let toBreak = false
+        for (const regexp of [/^([a-zA-Zа-яА-Я ]*) <.*?>$/g, /^<.*?> ([a-zA-Zа-яА-Я ]*)$/g]) {
+          const textWithPing = regexp.exec(line)
+          if (typeof textWithPing?.[1] === 'string') {
+            if (text) {
+              text = null
+              toBreak = true
+              break
+            }
+            text = textWithPing[1]
+          }
         }
+        if (toBreak) break
       }
+      if (!text) return null
 
       const matchedKeyword = this.getMatchedKeyWord(text)
       switch (matchedKeyword) {
