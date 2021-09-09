@@ -3,7 +3,7 @@ import { Client, Message } from 'discord.js'
 import { Logger } from '../../libs/logger'
 
 import { EDiscordStatuses, IDiscordConfig } from './types'
-import { ECommands } from './assets/slash-commands'
+import { ECommands, EKeywords, Keywords } from './assets/slash-commands'
 import { EEmotes, EmotesPriority } from './assets/emotes'
 
 export class Discord {
@@ -55,8 +55,8 @@ export class Discord {
   }
 
   private getReplyForBan (message: Message): string {
-    const mentioned = [...message.mentions.users.values()]
-    if (!mentioned[1] && mentioned[0]?.equals(this.client.user)) {
+    const mentions = [...message.mentions.users.values()]
+    if (mentions.length === 1 && mentions[0].equals(this.client.user)) {
       const guildEmojis = this.foundEmotes.get(message.guild.id)
       if (guildEmojis[EEmotes.PepeGhoul]) {
         return `${message.author} себя забань животное ${message.guild.emojis.cache.get(guildEmojis[EEmotes.PepeGhoul])}`
@@ -73,6 +73,49 @@ export class Discord {
       case ECommands.ban: return this.getReplyForBan(message)
       default: return null
     }
+  }
+
+  private getReplyForSorry (message: Message): string {
+    const guildEmojis = this.foundEmotes.get(message.guild.id)
+    let emoji = null
+    if (guildEmojis[EEmotes.pepeChill]) {
+      emoji = message.guild.emojis.cache.get(guildEmojis[EEmotes.pepeChill])
+    } else if (guildEmojis[EEmotes.PeepoChill]) {
+      emoji = message.guild.emojis.cache.get(guildEmojis[EEmotes.PeepoChill])
+    }
+    return `${message.author} ты прощен${emoji ? ` ${emoji}` : ''}`
+  }
+
+  private getMatchedKeyWord (text: string): EKeywords {
+    if (!text) return null
+
+    const formattedText = text.toLowerCase()
+    for (const key of Object.values(EKeywords)) {
+      if (Keywords[key].includes(formattedText)) return key
+    }
+    return null
+  }
+
+  private getReplyForText (message: Message): string {
+    const mentions = [...message.mentions.users.values()]
+    if (mentions.length === 1 && mentions[0].equals(this.client.user)) {
+      let text = null
+      const textBeforePing = /^([a-zA-Zа-яА-Я ]*) <.*?>$/g.exec(message.content)
+      if (typeof textBeforePing?.[1] === 'string') {
+        text = textBeforePing[1]
+      } else {
+        const textAfterPing = /^<.*?> ([a-zA-Zа-яА-Я ]*)$/g.exec(message.content)
+        if (typeof textAfterPing?.[1] === 'string') {
+          text = textAfterPing[1]
+        }
+      }
+
+      const matchedKeyword = this.getMatchedKeyWord(text)
+      switch (matchedKeyword) {
+        case EKeywords.sorry: return this.getReplyForSorry(message)
+      }
+    }
+    return null
   }
 
   private initListeners (): void {
@@ -98,15 +141,15 @@ export class Discord {
     })
 
     this.client.on('message', async (message: Message): Promise<void> => {
-      // await message.react(this.foundEmotes.get(message.guild.id)[EEmotes.PeepoChill])
       if (message.author.bot) return
 
-      if (message.content[0] === '!') {
+      let reply = this.getReplyForText(message)
+      if (!reply && message.content[0] === '!') {
         const command = <ECommands>(/!*(\w*).*/g).exec(message.content)[1]
-        const reply = this.getReplyForCommand(command, message)
-        if (reply) {
-          await message.channel.send(reply)
-        }
+        reply = this.getReplyForCommand(command, message)
+      }
+      if (reply) {
+        await message.channel.send(reply)
       }
     })
   }

@@ -3,6 +3,16 @@ export enum ECommands {
   ban = 'ban'
 }
 
+export enum EKeywords {
+  sorry = 'sorry'
+}
+
+export const Keywords: { [keyword in EKeywords]: string[] } = {
+  sorry: [
+    'sorry', 'sory', 'сорри', 'сори', 'сорь', 'прости', 'извини', 'извени',
+  ],
+}
+
 export interface ISlashCommand {
   name: ECommands
   description: string
