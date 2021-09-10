@@ -172,7 +172,7 @@ export class Discord {
 
     let reply: string
     const requestedMessage = message.content.replace(/<.*?>/g, '').replace(/\s{2,}/g, ' ').trim()
-    if (requestedMessage) {
+    if (requestedMessage && !requestedMessage.match(constants.urlRegex)) {
       try {
         const { data } = await this.chatBotConfig.xusuApi.post('/send', {
           bot: this.chatBotConfig.xusuBotName,
@@ -196,7 +196,7 @@ export class Discord {
       await message.channel.send(`> ${message.content}\n${message.author} ${reply}`)
     }
 
-    void message.channel.stopTyping()
+    void message.channel.stopTyping(true)
     this.chatBotConfig.rooms[message.channel.id].answering = false
   }
 
