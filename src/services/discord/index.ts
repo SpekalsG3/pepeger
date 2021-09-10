@@ -259,10 +259,12 @@ export class Discord {
         return await this.processChatBotMessage(message)
       }
 
-      const reply = this.getReplyForText(message)
-      if (reply) {
-        await message.channel.send(reply.message)
-        return
+      {
+        const reply = this.getReplyForText(message)
+        if (reply) {
+          await message.channel.send(reply.message)
+          return
+        }
       }
 
       if (message.content[0] === '!') {
@@ -274,7 +276,7 @@ export class Discord {
 
         switch (actionForCommand.type) {
           case ActionTypes.REPLY: {
-            await message.channel.send(reply.message)
+            await message.channel.send((<Action<ActionTypes.REPLY>>actionForCommand).message)
             break
           }
           case ActionTypes.SET: {
