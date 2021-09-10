@@ -165,33 +165,46 @@ export class Discord {
     return null
   }
 
+  private async getReplyFromChatBot (text: string, message: Message): Promise<string> {
+    try {
+      const { data } = await this.chatBotConfig.xusuApi.post('/send', {
+        bot: this.chatBotConfig.xusuBotName,
+        text: text,
+        uid: this.chatBotConfig.rooms[message.channel.id].uid,
+      })
+      if (!data?.ok) {
+        throw new Error(JSON.stringify(data))
+      }
+      this.chatBotConfig.rooms[message.channel.id].uid = data.uid
+      return data.text
+    } catch (e) {
+      const errorMessage = e.response?.data ? JSON.stringify(e.response.data) : e.message
+      throw new Error(errorMessage)
+    }
+  }
+
   private async processChatBotMessage (message: Message): Promise<void> {
     if (this.chatBotConfig.rooms[message.channel.id].answering) return
     void message.channel.startTyping()
     this.chatBotConfig.rooms[message.channel.id].answering = true
 
-    let reply: string
     const requestedMessage = message.content.replace(/<.*?>/g, '').replace(/\s{2,}/g, ' ').trim()
     if (requestedMessage && !requestedMessage.match(constants.urlRegex)) {
+      let reply: string
       try {
-        const { data } = await this.chatBotConfig.xusuApi.post('/send', {
-          bot: this.chatBotConfig.xusuBotName,
-          text: requestedMessage,
-          uid: this.chatBotConfig.rooms[message.channel.id].uid,
-        })
-        if (!data?.ok) {
-          throw new Error(JSON.stringify(data))
-        }
-        this.chatBotConfig.rooms[message.channel.id].uid = data.uid
-        reply = data.text
+        reply = await this.getReplyFromChatBot(requestedMessage, message)
       } catch (e) {
-        const errorMessage = e.response?.data ? JSON.stringify(e.response.data) : e.message
-        reply = `Error - ${errorMessage}`
-        this.logger.error(`Error on xusu [${constants.chatbot.xusuApiUrl}/send] request with params ${JSON.stringify({
-          bot: this.chatBotConfig.xusuBotName,
-          text: message.content,
-          uid: this.chatBotConfig.rooms[message.channel.id].uid,
-        })} - ${errorMessage}`)
+        this.chatBotConfig.rooms[message.channel.id].uid = null
+        try {
+          reply = await this.getReplyFromChatBot(requestedMessage, message)
+        } catch (e) {
+          this.logger.error(`Error on xusu [${constants.chatbot.xusuApiUrl}/send] request with params ${JSON.stringify({
+            bot: this.chatBotConfig.xusuBotName,
+            text: message.content,
+            uid: this.chatBotConfig.rooms[message.channel.id].uid,
+          })} - ${e.message}`)
+          reply = `Error - ${e.message}`
+        }
       }
       await message.channel.send(`> ${message.content}\n${message.author} ${reply}`)
     }
