@@ -1,46 +1,72 @@
-import { Client, Message } from 'discord.js'
+import { Client, GuildChannel, Message, TextChannel } from 'discord.js'
+
+import axios, { AxiosInstance } from 'axios'
 
 import { Logger } from '../../libs/logger'
+import { constants } from '../../configs/constants'
 
-import { EDiscordStatuses, IDiscordConfig } from './types'
-import { ECommands, EKeywords, Keywords } from './assets/slash-commands'
+import { createIdByTemplateFactory } from '../../utils/id-by-template'
+
+import { Action, ActionTypes, IDiscordConfig } from './types'
+import { ECommands, EKeywords, Keywords } from './assets/commands'
 import { EEmotes, EmotesPriority } from './assets/emotes'
+
+interface IChatBotConfig {
+  categoryName: Readonly<string>
+  rooms: {
+    [channelId: string]: {
+      answering: boolean
+      uid: string
+    }
+  }
+  xusuApi: AxiosInstance
+  xusuBotName: string
+  idByTemplateFactory: Readonly<Function>
+}
 
 export class Discord {
   private readonly foundEmotes = new Map<string, { [emojiName: string]: string }>()
-  private readonly client: Client
-  private readonly logger: Logger
+  private readonly client = new Client()
+  private readonly logger = new Logger('DISCORD-CLIENT')
   private readonly config: IDiscordConfig
-  private interactionTimeout = new Date()
-  private timeoutExceedTimes = 0
+  private statusCallTimeout = new Date()
+  private statusCallExceededTimes = 0
+  private readonly chatBotConfig: IChatBotConfig
 
   constructor (config: IDiscordConfig) {
-    this.client = new Client()
-    this.logger = new Logger('DISCORD-CLIENT')
+    this.chatBotConfig = {
+      categoryName: constants.chatbot.categoryName,
+      rooms: {},
+      xusuApi: axios.create({
+        baseURL: constants.chatbot.xusuApiUrl,
+      }),
+      xusuBotName: constants.chatbot.xusuBotName,
+      idByTemplateFactory: createIdByTemplateFactory(constants.chatbot.idCharactersRange, constants.chatbot.idTemplate),
+    }
     this.initListeners()
     this.config = config
   }
 
-  private updateInteractionTimeout (date: Date): void {
-    this.interactionTimeout = new Date(date.getTime() + 1000 * 5)
-  }
-
-  private getReplyForStatus (guildId: string, message: Message): string {
-    if (this.interactionTimeout.getTime() > Date.now()) {
-      if (this.timeoutExceedTimes === 1) {
-        this.timeoutExceedTimes += 1
-        this.updateInteractionTimeout(this.interactionTimeout)
-        return 'По медленней, еще раз и иди нахуй :/'
-      } else if (this.timeoutExceedTimes === 2) {
-        this.timeoutExceedTimes += 1
-        this.updateInteractionTimeout(this.interactionTimeout)
-        return 'Лан, пошли нахуй'
+  private getReplyForStatus (guildId: string, message: Message): Action<ActionTypes.REPLY> {
+    if (this.statusCallTimeout.getTime() > Date.now()) {
+      if (this.statusCallExceededTimes === 1) {
+        this.statusCallExceededTimes += 1
+        return {
+          message: 'По медленней, еще раз и иди нахуй :/',
+          type: ActionTypes.REPLY,
+        }
+      } else if (this.statusCallExceededTimes === 2) {
+        this.statusCallExceededTimes += 1
+        return {
+          message: 'Лан, пошли нахуй',
+          type: ActionTypes.REPLY,
+        }
       }
       return null
     }
 
-    this.timeoutExceedTimes = 1
-    this.updateInteractionTimeout(new Date())
+    this.statusCallExceededTimes = 1
+    this.statusCallTimeout = new Date(Date.now() + constants.statusTimeoutMs)
 
     let id = null
     const guildEmojies = this.foundEmotes.get(guildId)
@@ -51,23 +77,32 @@ export class Discord {
       }
     }
     const emoji = message.guild.emojis.cache.get(id)
-    return `Да живой я, отъебись ${emoji}`
+    return {
+      message: `Да живой я, отъебись ${emoji}`,
+      type: ActionTypes.REPLY,
+    }
   }
 
-  private getReplyForBan (message: Message): string {
+  private getReplyForBan (message: Message): Action<ActionTypes.REPLY> {
     const mentions = [...message.mentions.users.values()]
     if (mentions.length === 1 && mentions[0].equals(this.client.user)) {
       const guildEmojis = this.foundEmotes.get(message.guild.id)
       if (guildEmojis[EEmotes.PepeGhoul]) {
-        return `${message.author} себя забань животное ${message.guild.emojis.cache.get(guildEmojis[EEmotes.PepeGhoul])}`
+        return {
+          message: `${message.author} себя забань животное ${message.guild.emojis.cache.get(guildEmojis[EEmotes.PepeGhoul])}`,
+          type: ActionTypes.REPLY,
+        }
       } else if (guildEmojis[EEmotes.PeepoChill]) {
-        return `Отъебись ${message.guild.emojis.cache.get(guildEmojis[EEmotes.PeepoChill])}`
+        return {
+          message: `Отъебись ${message.guild.emojis.cache.get(guildEmojis[EEmotes.PeepoChill])}`,
+          type: ActionTypes.REPLY,
+        }
       }
     }
     return null
   }
 
-  private getReplyForCommand (command: ECommands, message: Message): string {
+  private getActionForCommand (command: ECommands, message: Message): Action<ActionTypes> {
     switch (command) {
       case ECommands.status: return this.getReplyForStatus(message.guild.id, message)
       case ECommands.ban: return this.getReplyForBan(message)
@@ -75,7 +110,7 @@ export class Discord {
     }
   }
 
-  private getReplyForSorry (message: Message): string {
+  private getReplyForSorry (message: Message): Action<ActionTypes.REPLY> {
     const guildEmojis = this.foundEmotes.get(message.guild.id)
     let emoji = null
     if (guildEmojis[EEmotes.pepeChill]) {
@@ -83,7 +118,10 @@ export class Discord {
     } else if (guildEmojis[EEmotes.PeepoChill]) {
       emoji = message.guild.emojis.cache.get(guildEmojis[EEmotes.PeepoChill])
     }
-    return `${message.author} ты прощен${emoji ? ` ${emoji}` : ''}`
+    return {
+      message: `${message.author} ты прощен${emoji ? ` ${emoji}` : ''}`,
+      type: ActionTypes.REPLY,
+    }
   }
 
   private getMatchedKeyWord (text: string): EKeywords {
@@ -96,7 +134,7 @@ export class Discord {
     return null
   }
 
-  private getReplyForText (message: Message): string {
+  private getReplyForText (message: Message): Action<ActionTypes.REPLY> {
     const mentions = [...message.mentions.users.values()]
     if (mentions.length === 1 && mentions[0].equals(this.client.user)) {
       let text = null
@@ -125,8 +163,44 @@ export class Discord {
     return null
   }
 
+  private async processChatBotMessage (message: Message): Promise<void> {
+    if (this.chatBotConfig.rooms[message.channel.id].answering) return
+    void message.channel.startTyping()
+    this.chatBotConfig.rooms[message.channel.id].answering = true
+
+    let reply: string
+    const requestedMessage = message.content.replace(/<.*?>/g, '').replace(/\s{2,}/g, ' ').trim()
+    if (requestedMessage) {
+      try {
+        const { data } = await this.chatBotConfig.xusuApi.post('/send', {
+          bot: this.chatBotConfig.xusuBotName,
+          text: requestedMessage,
+          uid: this.chatBotConfig.rooms[message.channel.id].uid,
+        })
+        if (!data?.ok) {
+          throw new Error(JSON.stringify(data))
+        }
+        this.chatBotConfig.rooms[message.channel.id].uid = data.uid
+        reply = data.text
+      } catch (e) {
+        const errorMessage = e.response?.data ? JSON.stringify(e.response.data) : e.message
+        reply = `Error - ${errorMessage}`
+        this.logger.error(`Error on xusu [${constants.chatbot.xusuApiUrl}/send] request with params ${JSON.stringify({
+          bot: this.chatBotConfig.xusuBotName,
+          text: message.content,
+          uid: this.chatBotConfig.rooms[message.channel.id].uid,
+        })} - ${errorMessage}`)
+      }
+      await message.channel.send(`> ${message.content}\n${message.author} ${reply}`)
+    }
+
+    void message.channel.stopTyping()
+    this.chatBotConfig.rooms[message.channel.id].answering = false
+  }
+
   private initListeners (): void {
-    this.client.on('ready', (): void => {
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
+    this.client.on('ready', async (): Promise<void> => {
       this.logger.info(`Logged in as: ${this.client.user.tag}`)
 
       const emojiNames = Object.values(EEmotes)
@@ -141,28 +215,74 @@ export class Discord {
         }
         this.foundEmotes.set(emoji.guild.id, guildEmojies)
       }
+
+      for (const [, guild] of this.client.guilds.cache) {
+        let newCategory = false
+
+        let category = guild.channels.cache.find(c => {
+          return c.type === 'category' && c.name === this.chatBotConfig.categoryName
+        })
+        if (!category) {
+          category = await guild.channels.create(this.chatBotConfig.categoryName, { type: 'category' })
+          newCategory = true
+        }
+
+        let generalChannel: GuildChannel = null
+        if (!newCategory) {
+          generalChannel = guild.channels.cache.find(c => {
+            return c.type === 'text' && c.parentID === category.id && c.name === constants.chatbot.generalChannelName
+          })
+        }
+        if (!generalChannel) {
+          generalChannel = await guild.channels.create(constants.chatbot.generalChannelName, {
+            type: 'text',
+            parent: category.id,
+          })
+        }
+
+        this.chatBotConfig.rooms[generalChannel.id] = {
+          answering: false,
+          uid: null,
+        }
+      }
     })
 
     this.client.on('error', (error: Error): void => {
       this.logger.error('Error: ', error.message)
     })
 
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises
     this.client.on('message', async (message: Message): Promise<void> => {
       if (message.author.bot) return
 
-      let reply = this.getReplyForText(message)
-      if (!reply && message.content[0] === '!') {
-        const command = <ECommands>(/!*(\w*).*/g).exec(message.content)[1]
-        reply = this.getReplyForCommand(command, message)
+      if ((<TextChannel>message.channel).parent.name === this.chatBotConfig.categoryName) {
+        return await this.processChatBotMessage(message)
       }
+
+      const reply = this.getReplyForText(message)
       if (reply) {
-        await message.channel.send(reply)
+        await message.channel.send(reply.message)
+        return
+      }
+
+      if (message.content[0] === '!') {
+        const command = <ECommands>(/!*(\w*).*/g).exec(message.content)[1]
+        const actionForCommand = this.getActionForCommand(command, message)
+        if (!actionForCommand) {
+          return
+        }
+
+        switch (actionForCommand.type) {
+          case ActionTypes.REPLY: {
+            await message.channel.send(reply.message)
+            break
+          }
+          case ActionTypes.SET: {
+            break
+          }
+        }
       }
     })
-  }
-
-  public getStatus (): EDiscordStatuses {
-    return EDiscordStatuses.RUNNING
   }
 
   public async login (): Promise<void> {
