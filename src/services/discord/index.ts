@@ -11,8 +11,9 @@ import { Action, ActionTypes, IDiscordConfig } from './types'
 import { ECommands, EKeywords, Keywords } from './assets/commands'
 import { EEmotes, EmotesPriority } from './assets/emotes'
 
-interface IChatBotConfig {
-  categoryName: Readonly<string>
+type IChatBotConfig = Readonly<{
+  categoryName: string
+  generalName: string
   rooms: {
     [channelId: string]: {
       answering: boolean
@@ -21,8 +22,8 @@ interface IChatBotConfig {
   }
   xusuApi: AxiosInstance
   xusuBotName: string
-  idByTemplateFactory: Readonly<Function>
-}
+  idByTemplateFactory: Function
+}>
 
 export class Discord {
   private readonly foundEmotes = new Map<string, { [emojiName: string]: string }>()
@@ -36,6 +37,7 @@ export class Discord {
   constructor (config: IDiscordConfig) {
     this.chatBotConfig = {
       categoryName: constants.chatbot.categoryName,
+      generalName: constants.chatbot.generalChannelName,
       rooms: {},
       xusuApi: axios.create({
         baseURL: constants.chatbot.xusuApiUrl,
@@ -223,21 +225,31 @@ export class Discord {
           return c.type === 'category' && c.name === this.chatBotConfig.categoryName
         })
         if (!category) {
-          category = await guild.channels.create(this.chatBotConfig.categoryName, { type: 'category' })
+          try {
+            category = await guild.channels.create(this.chatBotConfig.categoryName, { type: 'category' })
+          } catch (e) {
+            this.logger.error(`Failed to create category ${this.chatBotConfig.categoryName} - ${e.message}`)
+            continue
+          }
           newCategory = true
         }
 
         let generalChannel: GuildChannel = null
         if (!newCategory) {
           generalChannel = guild.channels.cache.find(c => {
-            return c.type === 'text' && c.parentID === category.id && c.name === constants.chatbot.generalChannelName
+            return c.type === 'text' && c.parentID === category.id && c.name === this.chatBotConfig.generalName
           })
         }
         if (!generalChannel) {
-          generalChannel = await guild.channels.create(constants.chatbot.generalChannelName, {
-            type: 'text',
-            parent: category.id,
-          })
+          try {
+            generalChannel = await guild.channels.create(this.chatBotConfig.generalName, {
+              type: 'text',
+              parent: category.id,
+            })
+          } catch (e) {
+            this.logger.error(`Failed to create channel ${this.chatBotConfig.generalName} - ${e.message}`)
+            await category.delete(`Failed to create channel ${this.chatBotConfig.generalName} - ${e.message}`)
+          }
         }
 
         this.chatBotConfig.rooms[generalChannel.id] = {
