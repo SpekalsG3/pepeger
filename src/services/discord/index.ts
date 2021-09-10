@@ -17,7 +17,7 @@ type IChatBotConfig = Readonly<{
   rooms: {
     [channelId: string]: {
       answering: boolean
-      uid: string
+      uids: { [userId: string]: string }
     }
   }
   xusuApi: AxiosInstance
@@ -170,12 +170,12 @@ export class Discord {
       const { data } = await this.chatBotConfig.xusuApi.post('/send', {
         bot: this.chatBotConfig.xusuBotName,
         text: text,
-        uid: this.chatBotConfig.rooms[message.channel.id].uid,
+        uid: this.chatBotConfig.rooms[message.channel.id].uids[message.author.id],
       })
       if (!data?.ok) {
         throw new Error(JSON.stringify(data))
       }
-      this.chatBotConfig.rooms[message.channel.id].uid = data.uid
+      this.chatBotConfig.rooms[message.channel.id].uids[message.author.id] = data.uid
       return data.text
     } catch (e) {
       const errorMessage = e.response?.data ? JSON.stringify(e.response.data) : e.message
@@ -193,15 +193,15 @@ export class Discord {
       let reply: string
       try {
         reply = await this.getReplyFromChatBot(requestedMessage, message)
-      } catch (e) {
-        this.chatBotConfig.rooms[message.channel.id].uid = null
+      } catch (ignore) {
+        this.chatBotConfig.rooms[message.channel.id].uids[message.author.id] = null
         try {
           reply = await this.getReplyFromChatBot(requestedMessage, message)
         } catch (e) {
           this.logger.error(`Error on xusu [${constants.chatbot.xusuApiUrl}/send] request with params ${JSON.stringify({
             bot: this.chatBotConfig.xusuBotName,
             text: message.content,
-            uid: this.chatBotConfig.rooms[message.channel.id].uid,
+            uid: this.chatBotConfig.rooms[message.channel.id].uids[message.author.id],
           })} - ${e.message}`)
           reply = `Error - ${e.message}`
         }
@@ -262,12 +262,13 @@ export class Discord {
           } catch (e) {
             this.logger.error(`Failed to create channel ${this.chatBotConfig.generalName} - ${e.message}`)
             await category.delete(`Failed to create channel ${this.chatBotConfig.generalName} - ${e.message}`)
+            continue
           }
         }
 
         this.chatBotConfig.rooms[generalChannel.id] = {
           answering: false,
-          uid: null,
+          uids: {},
         }
       }
     })
