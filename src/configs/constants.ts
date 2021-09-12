@@ -3,10 +3,11 @@ export const constants = {
   chatbot: {
     categoryName: process.env.CHAT_BOT_CATEGORY_NAME,
     generalChannelName: 'general',
+    botToBotName: 'bot-to-bot',
     idCharactersRange: 'a-zA-Z0-9',
     idTemplate: '********-****-****-****-************',
     xusuApiUrl: 'https://xu.su/api',
     xusuBotName: 'kristina',
   },
-  urlRegex: /((([A-Za-z]{3,9}:(?:\/\/)?)(?:[-;:&=+$,\w]+@)?[A-Za-z0-9.-]+|(?:www\.|[-;:&=+$,\w]+@)[A-Za-z0-9.-]+)((?:\/[+~%/.\w\-_]*)?\??(?:[-+=&;%@\.\w_]*)#?(?:[.!/\\\w]*))?)/,
+  urlRegex: /((([A-Za-z]{3,9}:(?:\/\/)?)(?:[-;:&=+$,\w]+@)?[A-Za-z0-9.-]+|(?:www\.|[-;:&=+$,\w]+@)[A-Za-z0-9.-]+)((?:\/[+~%/.\w\-_]*)?\??[-+=&;%@.\w_]*#?[.!/\\\w]*)?)/,
 } as const
