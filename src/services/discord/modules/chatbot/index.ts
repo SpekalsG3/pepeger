@@ -37,7 +37,7 @@ export class ChatBotModule extends Shared {
     this.chatBotConfig.rooms[message.guild.id][message.channel.id].answering = true
 
     const requestedMessage = message.content.replace(/<.*?>/g, '').replace(/\s{2,}/g, ' ').trim()
-    if (requestedMessage && !requestedMessage.match(constants.urlRegex)) {
+    if (message.mentions.users.get(this.client.user.id) || (!requestedMessage.match(constants.urlRegex) && requestedMessage)) {
       let reply: string
       try {
         reply = await this.getReplyFromChatBot(requestedMessage, message)
@@ -54,7 +54,14 @@ export class ChatBotModule extends Shared {
           reply = `Error - ${e.message}`
         }
       }
-      await message.channel.send(`> ${message.content.replace(/\n/g, '\n> ')}\n${message.author} ${reply}`)
+      let quote = message.content
+      let match: RegExpExecArray = null
+      // eslint-disable-next-line no-cond-assign
+      while (match = /<@!(\d*?)>/gm.exec(quote)) {
+        const user = await this.client.users.fetch(match[1])
+        quote = quote.replace(match[0], `@${user.username}`)
+      }
+      await message.channel.send(`> ${quote.replace(/\n/g, '\n> ')}\n${message.author} ${reply}`)
     }
 
     roomConfig.answering = false
