@@ -54,12 +54,13 @@ export class ChatBotModule extends Shared {
           reply = `Error - ${e.message}`
         }
       }
+
       let quote = message.content
       let match: RegExpExecArray = null
       // eslint-disable-next-line no-cond-assign
       while (match = /<@!(\d*?)>/gm.exec(quote)) {
-        const user = await this.client.users.fetch(match[1])
-        quote = quote.replace(match[0], `@${user.username}`)
+        const member = await message.guild.members.fetch(match[1])
+        quote = quote.replace(match[0], `@${member.displayName}`)
       }
       await message.channel.send(`> ${quote.replace(/\n/g, '\n> ')}\n${message.author} ${reply}`)
     }
