@@ -58,11 +58,20 @@ export class ChatBotModule extends Shared {
       let quote = message.content
       let match: RegExpExecArray = null
       // eslint-disable-next-line no-cond-assign
-      while (match = /<@!(\d*?)>/gm.exec(quote)) {
+      while (match = /<@!(\d*?)>/gm.exec(quote)) { // replace user pings
         const member = await message.guild.members.fetch(match[1])
         quote = quote.replace(match[0], `@${member.displayName}`)
       }
-      await message.channel.send(`> ${quote.replace(/\n/g, '\n> ')}\n${message.author} ${reply}`)
+      // eslint-disable-next-line no-cond-assign
+      while (match = /<@&(\d*?)>/gm.exec(quote)) { // replace role pings
+        const role = await message.guild.roles.fetch(match[1])
+        quote = quote.replace(match[0], `@${role.name}`)
+      }
+      quote = quote
+        .replace(/\n/g, '\n> ') // multiline quote
+        .replace(/@here/g, '\\@here') // not to ping here
+        .replace(/@everyone/g, '\\@everyone') // not to ping everyone
+      await message.channel.send(`> ${quote}\n${message.author} ${reply}`)
     }
 
     roomConfig.answering = false
