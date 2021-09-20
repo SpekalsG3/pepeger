@@ -15,9 +15,15 @@ export class Discord extends combined {
     this.initListeners()
   }
 
-  private async initForGuild (guild: Guild): Promise<void> {
+  private initForGuild (guild: Guild): void {
     for (const guildInitListener of this.listeners.get('initGuild')) {
-      await guildInitListener(guild)
+      void (async () => {
+        try {
+          await guildInitListener(guild)
+        } catch (e) {
+          this.logger.error(`Failed to handle 'initForGuild' for guild '${guild.name}' (${guild.id}): ${e.error}`)
+        }
+      })()
     }
   }
 
@@ -45,26 +51,37 @@ export class Discord extends combined {
     })
 
     this.client.on('error', (error: Error): void => {
-      this.logger.error('Error: ', error.message)
+      this.logger.error(`Discord.js threw error: ${error.message}`)
     })
 
     this.client.on('guildCreate', (guild: Guild) => {
-      this.logger.info(`Added on new server "${guild.name}", owner ${guild.owner.user.tag}`)
+      this.logger.info(`Added on new server '${guild.name}' (${guild.id}), owner ${guild.owner.user.tag}`)
       void this.initForGuild(guild)
     })
 
     this.client.on('guildDelete', (guild: Guild) => {
       for (const listener of this.listeners.get('deleteGuild')) {
-        listener(guild)
+        void (async () => {
+          try {
+            await listener(guild)
+          } catch (e) {
+            this.logger.error(`Failed to handle 'deleteGuild' for guild '${guild.name}' (${guild.id}): ${e.message}`)
+          }
+        })()
       }
     })
 
-    // eslint-disable-next-line @typescript-eslint/no-misused-promises
-    this.client.on('message', async (message: Message): Promise<void> => {
+    this.client.on('message', (message: Message): void => {
       if (message.author.bot) return
 
       for (const listener of this.listeners.get('onMessage')) {
-        await listener(message)
+        void (async () => {
+          try {
+            await listener(message)
+          } catch (e) {
+            this.logger.error(`Failed to handle 'onMessage' on guild ${message.guild.id} (${message.guild.id}) from user ${message.author.tag} (${message.author.id}): ${e.message}`)
+          }
+        })()
       }
     })
   }

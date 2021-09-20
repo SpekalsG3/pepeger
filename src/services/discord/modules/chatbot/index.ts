@@ -1,12 +1,13 @@
 import axios from 'axios'
-import { Guild, GuildChannel, Message, TextChannel } from 'discord.js'
+import { Guild, GuildChannel, Message, MessageOptions, TextChannel } from 'discord.js'
 
 import { constants } from '../../../../configs/constants'
 import { createIdByTemplateFactory } from '../../../../utils/id-by-template'
 
 import { Shared } from '../shared'
 
-import { IChatBotConfig } from './types'
+import { EQuoteTypes, IChatBotConfig, IGetQuoteResponse } from './types'
+import { getQuote } from './modules/quote-formatter'
 
 export class ChatBotModule extends Shared {
   private readonly chatBotConfig: IChatBotConfig
@@ -55,23 +56,21 @@ export class ChatBotModule extends Shared {
         }
       }
 
-      let quote = message.content
-      let match: RegExpExecArray = null
-      // eslint-disable-next-line no-cond-assign
-      while (match = /<@!(\d*?)>/gm.exec(quote)) { // replace user pings
-        const member = await message.guild.members.fetch(match[1])
-        quote = quote.replace(match[0], `@${member.displayName}`)
+      const answer: MessageOptions = {
+        content: `${message.author} ${reply}`,
       }
-      // eslint-disable-next-line no-cond-assign
-      while (match = /<@&(\d*?)>/gm.exec(quote)) { // replace role pings
-        const role = await message.guild.roles.fetch(match[1])
-        quote = quote.replace(match[0], `@${role.name}`)
+
+      const quote = await getQuote(message)
+      switch (quote.type) {
+        case EQuoteTypes.text: {
+          answer.content = `${(<IGetQuoteResponse<EQuoteTypes.text>>quote).content}\n${answer.content}`
+          break
+        }
+        case EQuoteTypes.attachment: {
+          answer.files = (<IGetQuoteResponse<EQuoteTypes.attachment>>quote).content
+        }
       }
-      quote = quote
-        .replace(/\n/g, '\n> ') // multiline quote
-        .replace(/@here/g, '\\@here') // not to ping here
-        .replace(/@everyone/g, '\\@everyone') // not to ping everyone
-      await message.channel.send(`> ${quote}\n${message.author} ${reply}`)
+      await message.channel.send(answer)
     }
 
     roomConfig.answering = false
