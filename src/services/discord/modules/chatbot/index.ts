@@ -4,12 +4,13 @@ import { Guild, GuildChannel, Message, MessageOptions, TextChannel } from 'disco
 import { constants } from '../../../../configs/constants'
 import { createIdByTemplateFactory } from '../../../../utils/id-by-template'
 
-import { Shared } from '../shared'
+import { IContext } from '../../types'
 
 import { EQuoteTypes, IChatBotConfig, IGetQuoteResponse } from './types'
 import { getQuote } from './modules/quote-formatter'
 
-export class ChatBotModule extends Shared {
+export class ChatBotModule {
+  private readonly ctx: IContext
   private readonly chatBotConfig: IChatBotConfig
 
   private async getReplyFromChatBot (text: string, message: Message): Promise<string> {
@@ -38,7 +39,7 @@ export class ChatBotModule extends Shared {
     this.chatBotConfig.rooms[message.guild.id][message.channel.id].answering = true
 
     const requestedMessage = message.content.replace(/<.*?>/g, '').replace(/\s{2,}/g, ' ').trim()
-    if (message.mentions.users.get(this.client.user.id) || (!requestedMessage.match(constants.urlRegex) && requestedMessage)) {
+    if (message.mentions.users.get(this.ctx.client.user.id) || (!requestedMessage.match(constants.urlRegex) && requestedMessage)) {
       let reply: string
       try {
         reply = await this.getReplyFromChatBot(requestedMessage, message)
@@ -47,7 +48,7 @@ export class ChatBotModule extends Shared {
         try {
           reply = await this.getReplyFromChatBot(requestedMessage, message)
         } catch (e) {
-          this.logger.error(`Error on xusu [${constants.chatbot.xusuApiUrl}/send] request with params ${JSON.stringify({
+          this.ctx.logger.error(`Error on xusu [${constants.chatbot.xusuApiUrl}/send] request with params ${JSON.stringify({
             bot: this.chatBotConfig.xusuBotName,
             text: message.content,
             uid: roomConfig.uids[message.author.id],
@@ -88,7 +89,7 @@ export class ChatBotModule extends Shared {
       try {
         category = await guild.channels.create(this.chatBotConfig.categoryName, { type: 'category' })
       } catch (e) {
-        this.logger.error(`Failed to create category ${this.chatBotConfig.categoryName} - ${e.message}`)
+        this.ctx.logger.error(`Failed to create category ${this.chatBotConfig.categoryName} - ${e.message}`)
         return
       }
       newCategory = true
@@ -107,7 +108,7 @@ export class ChatBotModule extends Shared {
           parent: category.id,
         })
       } catch (e) {
-        this.logger.error(`Failed to create channel ${this.chatBotConfig.generalName} - ${e.message}`)
+        this.ctx.logger.error(`Failed to create channel ${this.chatBotConfig.generalName} - ${e.message}`)
         await category.delete(`Failed to create channel ${this.chatBotConfig.generalName} - ${e.message}`)
         return
       }
@@ -121,8 +122,9 @@ export class ChatBotModule extends Shared {
     }
   }
 
-  constructor (...args: any) {
-    super(args)
+  constructor (ctx: IContext) {
+    this.ctx = ctx
+
     this.chatBotConfig = {
       categoryName: constants.chatbot.categoryName,
       generalName: constants.chatbot.generalChannelName,
@@ -135,15 +137,15 @@ export class ChatBotModule extends Shared {
       idByTemplateFactory: createIdByTemplateFactory(constants.chatbot.idCharactersRange, constants.chatbot.idTemplate),
     }
 
-    this.listeners.add('initGuild', async (guild: Guild) => {
+    this.ctx.listeners.add('initGuild', async (guild: Guild) => {
       await this.createChannels(guild)
     })
-    this.listeners.add('deleteGuild', (guild: Guild) => {
+    this.ctx.listeners.add('deleteGuild', (guild: Guild) => {
       // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
       delete this.chatBotConfig.rooms[guild.id]
     })
 
-    this.listeners.add('onMessage', async (message: Message): Promise<boolean> => {
+    this.ctx.listeners.add('onMessage', async (message: Message): Promise<boolean> => {
       if ((<TextChannel>message.channel).parent.name === this.chatBotConfig.categoryName) {
         await this.processChatBotMessage(message)
         return true

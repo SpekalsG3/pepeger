@@ -1,27 +1,62 @@
-import { Guild, Message } from 'discord.js'
+import { Client, Guild, Message } from 'discord.js'
 
-import { combineModules } from '../../utils/combine-modules'
+import { Logger } from '../../libs/logger'
 
-import { IDiscordConfig } from './types'
+import { Listeners } from '../../utils/listeners'
+
+import { IContext, IDiscordConfig } from './types'
 import { EEmotes } from './assets/emotes'
 import { ChatBotModule } from './modules/chatbot'
 import { CommandsModule } from './modules/commands'
 
-const combined = combineModules([CommandsModule, ChatBotModule])
+type TModule = new (ctx: IContext) => any
 
-export class Discord extends combined {
+export class Discord {
+  private readonly ctx: IContext
+  // private readonly modules: TModule[] = []
+
   constructor (config: IDiscordConfig) {
-    super(config)
+    this.ctx = {
+      foundEmotes: new Map(),
+      client: new Client(),
+      logger: new Logger('DISCORD-CLIENT'),
+      listeners: new Listeners(),
+      config: config,
+    }
+
+    this.ctx.listeners.add('initGuild', async (guild: Guild) => {
+      const emojiNames = Object.values(EEmotes)
+      const guildEmojies = {}
+
+      for (const [, emoji] of guild.emojis.cache) {
+        if (emojiNames.includes(<EEmotes>emoji.name)) {
+          guildEmojies[emoji.name] = emoji.id
+        }
+      }
+      this.ctx.foundEmotes.set(guild.id, guildEmojies)
+    })
+    this.ctx.listeners.add('deleteGuild', (guild: Guild) => {
+      this.ctx.foundEmotes.delete(guild.id)
+    })
+
+    this.applyModules([ChatBotModule, CommandsModule])
     this.initListeners()
   }
 
+  public applyModules (modules: TModule[]): void {
+    for (const Module of modules) {
+      // eslint-disable-next-line no-new
+      new Module(this.ctx)
+    }
+  }
+
   private initForGuild (guild: Guild): void {
-    for (const guildInitListener of this.listeners.get('initGuild')) {
+    for (const guildInitListener of this.ctx.listeners.get('initGuild')) {
       void (async () => {
         try {
           await guildInitListener(guild)
         } catch (e) {
-          this.logger.error(`Failed to handle 'initForGuild' for guild '${guild.name}' (${guild.id}): ${e.error}`)
+          this.ctx.logger.error(`Failed to handle 'initForGuild' for guild '${guild.name}' (${guild.id}): ${e.error}`)
         }
       })()
     }
@@ -29,57 +64,57 @@ export class Discord extends combined {
 
   private initListeners (): void {
     // eslint-disable-next-line @typescript-eslint/no-misused-promises
-    this.client.on('ready', async (): Promise<void> => {
-      this.logger.info(`Logged in as: ${this.client.user.tag}`)
+    this.ctx.client.on('ready', async (): Promise<void> => {
+      this.ctx.logger.info(`Logged in as: ${this.ctx.client.user.tag}`)
 
       const emojiNames = Object.values(EEmotes)
-      const emojis = this.client.emojis.cache
+      const emojis = this.ctx.client.emojis.cache
       for (const [emojiId, emoji] of emojis) {
-        let guildEmojies = this.foundEmotes.get(emoji.guild.id)
+        let guildEmojies = this.ctx.foundEmotes.get(emoji.guild.id)
         if (!guildEmojies) {
           guildEmojies = {}
         }
         if (emojiNames.includes(<EEmotes>emoji.name)) {
           Object.assign(guildEmojies, { [emoji.name]: emojiId })
         }
-        this.foundEmotes.set(emoji.guild.id, guildEmojies)
+        this.ctx.foundEmotes.set(emoji.guild.id, guildEmojies)
       }
 
-      for (const [, guild] of this.client.guilds.cache) {
+      for (const [, guild] of this.ctx.client.guilds.cache) {
         await this.initForGuild(guild)
       }
     })
 
-    this.client.on('error', (error: Error): void => {
-      this.logger.error(`Discord.js threw error: ${error.message}`)
+    this.ctx.client.on('error', (error: Error): void => {
+      this.ctx.logger.error(`Discord.js threw error: ${error.message}`)
     })
 
-    this.client.on('guildCreate', (guild: Guild) => {
-      this.logger.info(`Added on new server '${guild.name}' (${guild.id}), owner ${guild.owner.user.tag}`)
+    this.ctx.client.on('guildCreate', (guild: Guild) => {
+      this.ctx.logger.info(`Added on new server '${guild.name}' (${guild.id}), owner ${guild.owner.user.tag}`)
       void this.initForGuild(guild)
     })
 
-    this.client.on('guildDelete', (guild: Guild) => {
-      for (const listener of this.listeners.get('deleteGuild')) {
+    this.ctx.client.on('guildDelete', (guild: Guild) => {
+      for (const listener of this.ctx.listeners.get('deleteGuild')) {
         void (async () => {
           try {
             await listener(guild)
           } catch (e) {
-            this.logger.error(`Failed to handle 'deleteGuild' for guild '${guild.name}' (${guild.id}): ${e.message}`)
+            this.ctx.logger.error(`Failed to handle 'deleteGuild' for guild '${guild.name}' (${guild.id}): ${e.message}`)
           }
         })()
       }
     })
 
-    this.client.on('message', (message: Message): void => {
+    this.ctx.client.on('message', (message: Message): void => {
       if (message.author.bot) return
 
-      for (const listener of this.listeners.get('onMessage')) {
+      for (const listener of this.ctx.listeners.get('onMessage')) {
         void (async () => {
           try {
             await listener(message)
           } catch (e) {
-            this.logger.error(`Failed to handle 'onMessage' on guild ${message.guild.id} (${message.guild.id}) from user ${message.author.tag} (${message.author.id}): ${e.message}`)
+            this.ctx.logger.error(`Failed to handle 'onMessage' on guild ${message.guild.id} (${message.guild.id}) from user ${message.author.tag} (${message.author.id}): ${e.message}`)
           }
         })()
       }
@@ -87,6 +122,6 @@ export class Discord extends combined {
   }
 
   public async login (): Promise<void> {
-    await this.client.login(this.config.token)
+    await this.ctx.client.login(this.ctx.config.token)
   }
 }

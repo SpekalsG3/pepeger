@@ -1,12 +1,12 @@
 import { Message } from 'discord.js'
 
-import { Shared } from '../shared'
-import { Action, ActionTypes } from '../../types'
+import { Action, ActionTypes, IContext } from '../../types'
 import { ECommands, EKeywords, Keywords } from '../../assets/commands'
 import { EEmotes, EmotesPriority } from '../../assets/emotes'
 import { constants } from '../../../../configs/constants'
 
-export class CommandsModule extends Shared {
+export class CommandsModule {
+  private readonly ctx: IContext
   private statusCallTimeout = new Date()
   private statusCallExceededTimes = 0
 
@@ -21,7 +21,7 @@ export class CommandsModule extends Shared {
   }
 
   private getReplyForSorry (message: Message): Action<ActionTypes.REPLY> {
-    const guildEmojis = this.foundEmotes.get(message.guild.id)
+    const guildEmojis = this.ctx.foundEmotes.get(message.guild.id)
     let emoji = null
     if (guildEmojis[EEmotes.pepeChill]) {
       emoji = message.guild.emojis.cache.get(guildEmojis[EEmotes.pepeChill])
@@ -36,7 +36,7 @@ export class CommandsModule extends Shared {
 
   private getReplyForText (message: Message): Action<ActionTypes.REPLY> {
     const mentions = [...message.mentions.users.values()]
-    if (mentions.length === 1 && mentions[0].equals(this.client.user)) {
+    if (mentions.length === 1 && mentions[0].equals(this.ctx.client.user)) {
       let text = null
       for (const line of message.content.split('\n')) {
         let toBreak = false
@@ -57,7 +57,8 @@ export class CommandsModule extends Shared {
 
       const matchedKeyword = CommandsModule.getMatchedKeyWord(text)
       switch (matchedKeyword) {
-        case EKeywords.sorry: return this.getReplyForSorry(message)
+        case EKeywords.sorry:
+          return this.getReplyForSorry(message)
       }
     }
     return null
@@ -85,7 +86,7 @@ export class CommandsModule extends Shared {
     this.statusCallTimeout = new Date(Date.now() + constants.statusTimeoutMs)
 
     let id = null
-    const guildEmojies = this.foundEmotes.get(guildId)
+    const guildEmojies = this.ctx.foundEmotes.get(guildId)
     for (const emote of EmotesPriority) {
       const emoteId = guildEmojies[emote]
       if (emoteId) {
@@ -101,8 +102,8 @@ export class CommandsModule extends Shared {
 
   private getReplyForBan (message: Message): Action<ActionTypes.REPLY> {
     const mentions = [...message.mentions.users.values()]
-    if (mentions.length === 1 && mentions[0].equals(this.client.user)) {
-      const guildEmojis = this.foundEmotes.get(message.guild.id)
+    if (mentions.length === 1 && mentions[0].equals(this.ctx.client.user)) {
+      const guildEmojis = this.ctx.foundEmotes.get(message.guild.id)
       if (guildEmojis[EEmotes.PepeGhoul]) {
         return {
           message: `${message.author} себя забань животное ${message.guild.emojis.cache.get(guildEmojis[EEmotes.PepeGhoul])}`,
@@ -120,16 +121,19 @@ export class CommandsModule extends Shared {
 
   private getActionForCommand (command: ECommands, message: Message): Action<ActionTypes> {
     switch (command) {
-      case ECommands.status: return this.getReplyForStatus(message.guild.id, message)
-      case ECommands.ban: return this.getReplyForBan(message)
-      default: return null
+      case ECommands.status:
+        return this.getReplyForStatus(message.guild.id, message)
+      case ECommands.ban:
+        return this.getReplyForBan(message)
+      default:
+        return null
     }
   }
 
-  constructor (...args: any) {
-    super(args)
+  constructor (ctx: IContext) {
+    this.ctx = ctx
 
-    this.listeners.add('onMessage', async (message: Message): Promise<boolean> => {
+    this.ctx.listeners.add('onMessage', async (message: Message): Promise<boolean> => {
       { // enclose `reply` in local scope
         const reply = this.getReplyForText(message)
         if (reply) {
