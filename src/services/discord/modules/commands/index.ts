@@ -121,12 +121,9 @@ export class CommandsModule {
 
   private getActionForCommand (command: ECommands, message: Message): Action<ActionTypes> {
     switch (command) {
-      case ECommands.status:
-        return this.getReplyForStatus(message.guild.id, message)
-      case ECommands.ban:
-        return this.getReplyForBan(message)
-      default:
-        return null
+      case ECommands.status: return this.getReplyForStatus(message.guild.id, message)
+      case ECommands.ban: return this.getReplyForBan(message)
+      default: return null
     }
   }
 
