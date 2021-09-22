@@ -38,7 +38,10 @@ export class ChatBotModule {
     void message.channel.startTyping()
     this.chatBotConfig.rooms[message.guild.id][message.channel.id].answering = true
 
-    const requestedMessage = message.content.replace(/<.*?>/g, '').replace(/\s{2,}/g, ' ').trim()
+    const requestedMessage = message.content
+      .replace(/(<@[!&]?\d*?>|:[\w\d]*?:)/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim()
     if (message.mentions.users.get(this.ctx.client.user.id) || (!requestedMessage.match(constants.urlRegex) && requestedMessage)) {
       let reply: string
       try {
