@@ -21,7 +21,13 @@
     "downlevelIteration": true,
     "noStrictGenericChecks": true,
     "outDir": "./dist",
-    "baseUrl": "./src"
+    "baseUrl": "./src",
+    "paths": {
+      "configs/*": ["configs/*"],
+      "libs/*": ["libs/*"],
+      "services/*": ["services/*"],
+      "utils/*": ["utils/*"]
+    }
   },
   "include": [
     "./src/**/*",
