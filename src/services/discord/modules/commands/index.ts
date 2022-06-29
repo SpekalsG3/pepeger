@@ -69,13 +69,13 @@ export class CommandsModule {
       if (this.statusCallExceededTimes === 1) {
         this.statusCallExceededTimes += 1
         return {
-          message: 'По медленней, еще раз и иди нахуй :/',
+          message: 'По медленней, еще раз будет последний :/',
           type: ActionTypes.REPLY,
         }
       } else if (this.statusCallExceededTimes === 2) {
         this.statusCallExceededTimes += 1
         return {
-          message: 'Лан, пошли нахуй',
+          message: 'Лан, бб',
           type: ActionTypes.REPLY,
         }
       }
@@ -95,7 +95,7 @@ export class CommandsModule {
     }
     const emoji = message.guild.emojis.cache.get(id)
     return {
-      message: `Да живой я, отъебись ${emoji}`,
+      message: `Да живой я ${emoji}`,
       type: ActionTypes.REPLY,
     }
   }
@@ -106,12 +106,12 @@ export class CommandsModule {
       const guildEmojis = this.ctx.foundEmotes.get(message.guild.id)
       if (guildEmojis[EEmotes.PepeGhoul]) {
         return {
-          message: `${message.author} себя забань животное ${message.guild.emojis.cache.get(guildEmojis[EEmotes.PepeGhoul])}`,
+          message: `${message.author} себя забань ${message.guild.emojis.cache.get(guildEmojis[EEmotes.PepeGhoul])}`,
           type: ActionTypes.REPLY,
         }
       } else if (guildEmojis[EEmotes.PeepoChill]) {
         return {
-          message: `Отъебись ${message.guild.emojis.cache.get(guildEmojis[EEmotes.PeepoChill])}`,
+          message: `Не выйдет ${message.guild.emojis.cache.get(guildEmojis[EEmotes.PeepoChill])}`,
           type: ActionTypes.REPLY,
         }
       }
